@@ -1,0 +1,28 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - REPOSITORY_URI=$ECR_ACCOUNT_BASE/tutorials/container-lambdas
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - IMAGE_TAG=$LAMBDA_NAME-${COMMIT_HASH:=latest}
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Building the Docker image...
+      - docker build -t $REPOSITORY_URI:$LAMBDA_NAME-latest .
+      - docker tag $REPOSITORY_URI:$LAMBDA_NAME-latest $REPOSITORY_URI:$IMAGE_TAG
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Logging in to Amazon ECR...
+      - aws --version
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_ACCOUNT_BASE
+      - echo Pushing the Docker images...
+      - docker push $REPOSITORY_URI:$LAMBDA_NAME-latest
+      - docker push $REPOSITORY_URI:$IMAGE_TAG
+      - aws lambda update-function-code --function-name $LAMBDA_NAME --image-uri $REPOSITORY_URI:$LAMBDA_NAME-latest
+      - echo Writing image definitions file...
+      - printf '[{"name":"%s","imageUri":"%s"}]' $LAMBDA_NAME $REPOSITORY_URI:$IMAGE_TAG > imagedefinitions.json
+artifacts:
+    files: imagedefinitions.json
